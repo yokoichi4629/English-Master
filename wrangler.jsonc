@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "english-master",
+  "compatibility_date": "2026-11-01",
+  // 第1段階は静的ファイルだけで動く(静的ファイルへのリクエストは無料・無制限)
+  "assets": {
+    "directory": "./public"
+  }
+}

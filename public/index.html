@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>English Master</title>
+  <meta name="description" content="聞いて、わかって、話せる英語へ。旅行英語と日常英会話を1日10分で。">
+  <meta name="theme-color" content="#16324f">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="English Master">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main id="app" aria-live="polite"></main>
+  <nav class="tabbar" aria-label="メニュー">
+    <a href="#/" data-tab="home"><span aria-hidden="true">🏠</span>ホーム</a>
+    <a href="#/c/words" data-tab="words"><span aria-hidden="true">📘</span>単語帳</a>
+    <a href="#/r" data-tab="record"><span aria-hidden="true">📊</span>学習記録</a>
+  </nav>
+  <div id="toast" role="status"></div>
+  <script src="/data.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

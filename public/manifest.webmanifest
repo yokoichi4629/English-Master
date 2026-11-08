@@ -1,0 +1,15 @@
+{
+  "name": "English Master",
+  "short_name": "English Master",
+  "description": "聞いて、わかって、話せる英語へ。",
+  "lang": "ja",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f1e9",
+  "theme_color": "#16324f",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
