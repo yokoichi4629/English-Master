@@ -1,10 +1,13 @@
 // English Master — サーバー側(Cloudflare Workers)
 // /api/transcribe : 録音した英語を文字に起こす(AI発音チェック・会話の音声入力)
 // /api/chat       : 場面別のAI英会話
+// /api/tts        : 英文を音声(MP3)にする(iPhoneの消音モードでも鳴るように)。一度作った音声はKVに保存して再利用
 // それ以外は public/ の静的ファイルをそのまま返す
 
 const STT_MODEL = '@cf/openai/whisper-large-v3-turbo';
 const CHAT_MODEL = '@cf/google/gemma-4-26b-a4b-it';
+const TTS_MODEL = '@cf/deepgram/aura-1';
+const TTS_VOICE = 'asteria';
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
 const MAX_TURNS = 24;
 const MAX_TEXT = 300;
@@ -65,6 +68,35 @@ export async function transcribe(req, env) {
   const res = await env.AI.run(STT_MODEL, { audio: toBase64(buf), language: 'en', condition_on_previous_text: false });
   const text = String(res?.text ?? res?.result?.text ?? '').replace(/\s+/g, ' ').trim();
   return json({ text });
+}
+
+async function toArrayBuffer(res) {
+  if (!res) return null;
+  if (res instanceof ArrayBuffer) return res;
+  if (ArrayBuffer.isView(res)) return res.buffer.slice(res.byteOffset, res.byteOffset + res.byteLength);
+  if (res instanceof ReadableStream || res instanceof Response) return new Response(res.body ?? res).arrayBuffer();
+  const b64 = typeof res.audio === 'string' ? res.audio.replace(/^data:[^,]+,/, '') : null;
+  if (b64) { const bin = atob(b64); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out.buffer; }
+  return null;
+}
+
+const audioResponse = (buf) => new Response(buf, { headers: { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' } });
+
+export async function tts(req, env, ctx) {
+  let body;
+  try { body = await req.json(); } catch { return json({ error: 'bad_json' }, 400); }
+  const text = typeof body?.text === 'string' ? body.text.trim() : '';
+  if (!text || text.length > MAX_TEXT) return json({ error: 'bad_text' }, 400);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  const key = `tts:v1:${TTS_VOICE}:${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+  if (env.TTS_CACHE) {
+    const hit = await env.TTS_CACHE.get(key, 'arrayBuffer');
+    if (hit) return audioResponse(hit);
+  }
+  const buf = await toArrayBuffer(await env.AI.run(TTS_MODEL, { text, speaker: TTS_VOICE, encoding: 'mp3' }));
+  if (!buf || buf.byteLength < 100) return json({ error: 'empty' }, 502);
+  if (env.TTS_CACHE) ctx?.waitUntil?.(env.TTS_CACHE.put(key, buf).catch(() => {}));
+  return audioResponse(buf);
 }
 
 export function buildSystemPrompt(scenarioId, level) {
@@ -138,7 +170,7 @@ export async function chat(req, env) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
     if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
@@ -146,6 +178,7 @@ export default {
     try {
       if (url.pathname === '/api/transcribe') return await transcribe(req, env);
       if (url.pathname === '/api/chat') return await chat(req, env);
+      if (url.pathname === '/api/tts') return await tts(req, env, ctx);
       return json({ error: 'not_found' }, 404);
     } catch (e) {
       const msg = String(e?.message || e);

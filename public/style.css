@@ -338,5 +338,10 @@ body.offline #offline-bar { display: block; }
 body.offline #app { padding-top: calc(env(safe-area-inset-top) + 36px); }
 .tabbar a { font-size: 10px; }
 
+.voice-card { display: grid; gap: 10px; justify-items: start; margin-bottom: 12px; }
+.voice-card .hint { margin: 0; }
+.chips.wide { display: flex; width: 100%; }
+.chips.wide .chip { flex: 1; }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 @media (max-width: 360px) { .stats { grid-template-columns: repeat(2, 1fr); } .phrase .en { font-size: 16px; } }

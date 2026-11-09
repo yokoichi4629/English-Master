@@ -12,6 +12,10 @@
   "ai": {
     "binding": "AI"
   },
+  // AIで作った英語音声の保存先(同じ英文は二度と作らない)
+  "kv_namespaces": [
+    { "binding": "TTS_CACHE", "id": "b457379bf84e41b0ab694807b4527af0" }
+  ],
   "observability": {
     "enabled": true
   }

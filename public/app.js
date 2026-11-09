@@ -124,17 +124,101 @@ function pickVoice() {
 }
 if (canSpeak) { pickVoice(); speechSynthesis.addEventListener?.('voiceschanged', pickVoice); }
 
+/* ---------- 音声(AI音声) ----------
+   iPhoneはブラウザの読み上げが消音モードで鳴らない・止めた直後に鳴らないことがあるため、
+   AIで作った英語音声(MP3)を <audio> で再生する。作った音声は端末にも保存し、2回目からは通信なしで再生。 */
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+S.voice ||= 'auto'; // auto | ai | device
+const useAiVoice = () => S.voice === 'ai' || (S.voice === 'auto' && IS_IOS);
+const player = new Audio();
+player.preload = 'auto';
+player.setAttribute('playsinline', '');
+let audioUnlocked = false;
+function silentWavUrl() {
+  const n = 1600, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, 16000, true); v.setUint32(28, 32000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+// iPhoneは最初のタップで一度鳴らした <audio> だけ、あとから自由に再生できる
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  try {
+    player.src = silentWavUrl();
+    player.play().catch(() => { audioUnlocked = false; });
+    if (canSpeak) speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance(' '), { volume: 0 }));
+  } catch { audioUnlocked = false; }
+}
+document.addEventListener('click', unlockAudio, true);
+document.addEventListener('touchend', unlockAudio, true);
+
+const TTS_CACHE = 'em-tts-v1';
+const TTS_MEM = {};
+const TTS_PENDING = {};
+function ttsUrl(text) {
+  if (TTS_MEM[text]) return Promise.resolve(TTS_MEM[text]);
+  if (TTS_PENDING[text]) return TTS_PENDING[text];
+  const key = `/__tts/${encodeURIComponent(text)}`;
+  const p = (async () => {
+    let cache = null;
+    try { cache = await caches.open(TTS_CACHE); } catch { /* 保存できない環境 */ }
+    let blob = null;
+    const hit = cache && await cache.match(key);
+    if (hit) blob = await hit.blob();
+    else {
+      if (!online()) throw new Error('offline');
+      const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      if (!r.ok) throw new Error(`tts_${r.status}`);
+      blob = await r.blob();
+      if (blob.size < 100) throw new Error('tts_empty');
+      cache?.put(key, new Response(blob, { headers: { 'content-type': 'audio/mpeg' } })).catch(() => {});
+    }
+    TTS_MEM[text] = URL.createObjectURL(blob);
+    return TTS_MEM[text];
+  })().finally(() => { delete TTS_PENDING[text]; });
+  TTS_PENDING[text] = p;
+  return p;
+}
+// 表示中のフレーズの音声を先に用意しておく(タップしてすぐ鳴るように)
+let prefetchQueue = [];
+let prefetching = false;
+function prefetchVoice(texts) {
+  if (!useAiVoice() || !online()) return;
+  prefetchQueue = [...new Set([...texts, ...prefetchQueue])].filter((t) => !TTS_MEM[t]).slice(0, 12);
+  if (prefetching) return;
+  prefetching = true;
+  (async () => {
+    while (prefetchQueue.length) { const t = prefetchQueue.shift(); try { await ttsUrl(t); } catch { break; } }
+    prefetching = false;
+  })();
+}
+const aiRate = () => ({ 0.6: 0.75, 0.85: 0.9, 1: 1 }[S.rate] || 1);
+
 let speakToken = 0;
-let ownAudio = null;
+let lastCancel = 0;
 function stopSpeaking() {
   speakToken++;
-  if (canSpeak) speechSynthesis.cancel();
-  if (ownAudio) { ownAudio.pause(); ownAudio = null; }
+  if (canSpeak && (speechSynthesis.speaking || speechSynthesis.pending)) { speechSynthesis.cancel(); lastCancel = Date.now(); }
+  player.onended = null;
+  try { player.pause(); } catch { /* noop */ }
 }
-function speak(text, times = 1, onDone) {
+function playUrl(url, tok, times, onDone, rate = 1) {
+  let n = 0;
+  player.onended = () => {
+    if (tok !== speakToken) return;
+    if (++n < times) setTimeout(() => { if (tok === speakToken) { player.currentTime = 0; player.play().catch(() => {}); } }, 700);
+    else { player.onended = null; onDone?.(); }
+  };
+  player.src = url;
+  player.defaultPlaybackRate = rate; player.playbackRate = rate;
+  player.preservesPitch = true; player.webkitPreservesPitch = true;
+  return player.play();
+}
+function speakDevice(text, times, onDone, tok) {
   if (!canSpeak) { toast('この端末では音声を再生できません'); return; }
-  stopSpeaking();
-  const tok = speakToken;
   let n = 0;
   const once = () => {
     if (tok !== speakToken) return;
@@ -146,7 +230,17 @@ function speak(text, times = 1, onDone) {
     };
     speechSynthesis.speak(u);
   };
-  once();
+  // 読み上げを止めた直後に始めると鳴らないことがあるので、少し間を空ける
+  const wait = 120 - (Date.now() - lastCancel);
+  if (wait > 0) setTimeout(once, wait); else once();
+}
+function speak(text, times = 1, onDone) {
+  stopSpeaking();
+  const tok = speakToken;
+  if (!useAiVoice()) { speakDevice(text, times, onDone, tok); return; }
+  ttsUrl(text)
+    .then((url) => { if (tok === speakToken) return playUrl(url, tok, times, onDone, aiRate()); return null; })
+    .catch(() => { if (tok === speakToken) speakDevice(text, times, onDone, tok); });
 }
 
 let toastTimer;
@@ -210,8 +304,7 @@ function playOwn(it) {
   const url = Rec.urls[it.id];
   if (!url) { toast('まず録音してください'); return; }
   stopSpeaking();
-  ownAudio = new Audio(url);
-  ownAudio.play().catch(() => toast('再生できませんでした'));
+  playUrl(url, speakToken, 1, null, 1).catch(() => toast('再生できませんでした'));
 }
 function compare(it) {
   if (!it || !Rec.urls[it.id]) return;
@@ -429,6 +522,7 @@ function renderTopic(c, t) {
     <a class="btn ghost" href="#/p/${c.id}/${t.id}/0">${ICON.mic}発音練習</a>
     <a class="btn primary" href="#/q/${c.id}/${t.id}">意味当てクイズ</a>
   </div>`;
+  prefetchVoice(t.items.map((x) => x.en));
 }
 
 /* ---------- マイリスト ---------- */
@@ -488,6 +582,7 @@ function renderQuestion() {
   }).join('')}</div>
   ${Q.answered ? feedback(q) : ''}`;
   if (!Q.answered && !q.played) { q.played = true; speak(q.it.en); }
+  prefetchVoice(Q.queue.slice(Q.i + 1, Q.i + 4).map((x) => x.it.en));
 }
 
 function feedback(q) {
@@ -797,6 +892,15 @@ function renderRecord() {
     <p class="hint">直近20問の正解率が85%以上でレベルアップ、55%未満でレベルを下げます。レベルに合わせて「今日の10問」の問題、選択肢の数(初級は3択)、AI英会話の英語のむずかしさが変わります。</p>
   </section>
 
+  <section class="card voice-card">
+    <p class="label">英語の音声</p>
+    <div class="chips wide" role="group" aria-label="英語の音声">
+      ${[['auto', '自動'], ['ai', 'AI音声'], ['device', '端末の音声']].map(([v, l]) => `<button class="chip ${S.voice === v ? 'on' : ''}" data-act="voice" data-v="${v}">${l}</button>`).join('')}
+    </div>
+    <p class="hint">「自動」はiPhoneではAI音声、それ以外は端末の読み上げを使います。AI音声は消音モードでも鳴り、一度聞いた英文は通信なしで再生できます。音が出ないときは切り替えてみてください。</p>
+    <button class="btn ghost small" data-act="voicetest">${ICON.play}テスト再生</button>
+  </section>
+
   <div class="stats">
     <div class="stat"><p class="label">学習日数</p><p class="num">${keys.length}<span>日</span></p></div>
     <div class="stat"><p class="label">連続</p><p class="num">${streak()}<span>日</span></p></div>
@@ -913,6 +1017,12 @@ $app.addEventListener('click', (e) => {
     case 'again': startQuiz(Q.pool, Q.title, Q.back); window.scrollTo(0, 0); break;
     // 発音練習
     case 'pmodel': speak(curPracticeItem().en); break;
+    case 'voice':
+      S.voice = el.dataset.v; save();
+      el.parentElement.querySelectorAll('.chip').forEach((b) => b.classList.toggle('on', b === el));
+      speak('Hello! Nice to meet you.');
+      break;
+    case 'voicetest': speak('Hello! Nice to meet you.'); break;
     case 'prec': {
       const p = curPracticeItem();
       toggleRec(p.id, () => renderPractice(), (id) => { delete AI_PRON[id]; if (online()) assessPron(id); else renderPractice(); });

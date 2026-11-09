@@ -1,7 +1,7 @@
 // English Master — オフライン学習用のサービスワーカー
 // アプリ本体と学習データを端末に保存し、電波がなくても学習できるようにする。
 // 表示は保存済みのものを使い、裏で最新版を取得して次回から反映する。
-const CACHE = 'english-master-v3';
+const CACHE = 'english-master-v4';
 const SHELL = ['/', '/style.css', '/app.js', '/data.js', '/manifest.webmanifest', '/icon.svg', '/icon-180.png', '/icon-192.png'];
 
 self.addEventListener('install', (e) => {
@@ -11,7 +11,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('english-master-') && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
