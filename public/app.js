@@ -44,7 +44,7 @@ const fmtDay = (k) => { const d = fromKey(k); return `${d.getMonth() + 1}/${d.ge
 
 /* ---------- 学習記録(端末内に保存) ---------- */
 const KEY = 'english-master.v1';
-const S = { days: {}, items: {}, fav: {}, rate: 0.85, goal: 20, hideJa: false };
+const S = { days: {}, items: {}, fav: {}, rate: 0.85, goal: 20, hideJa: false, hideEn: false };
 try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { /* 保存できない環境でも動かす */ }
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch { /* noop */ } };
 
@@ -759,7 +759,7 @@ const SCENES = [
 const SCENE = Object.fromEntries(SCENES.map((s) => [s.id, s]));
 const MAX_USER_TURNS = 10;
 const CHATS = {};
-const chatOf = (id) => (CHATS[id] ||= { msgs: [], sugg: [], loading: false, err: '', draft: '', showJa: {}, transcribing: false });
+const chatOf = (id) => (CHATS[id] ||= { msgs: [], sugg: [], loading: false, err: '', draft: '', showJa: {}, showEn: {}, transcribing: false });
 
 function renderChatHome() {
   $app.innerHTML = topBar('AI英会話', null) + `
@@ -784,9 +784,13 @@ function renderChat(id) {
   $app.innerHTML = topBar(s.title, '#/ai') + `
   <section class="mission"><span aria-hidden="true">${s.icon}</span><div><p class="label">ミッション・相手は${h(s.partner)}</p><p>${h(s.goal)}</p></div>
     <button class="btn ghost small" data-act="creset">最初から</button></section>
-  <div class="chat" id="chat">
-    ${C.msgs.map((m, i) => m.role === 'assistant' ? `<div class="bubble ai" data-i="${i}">
-        <p class="en">${h(m.content)}</p>
+  <div class="toolbar chat-tools">
+    <label class="switch"><input type="checkbox" data-act="hideen" ${S.hideEn ? 'checked' : ''}><span>AIの英文を隠す(聞き取り練習)</span></label>
+  </div>
+  ${S.hideEn ? '<p class="hint">音声だけで聞き取ってみよう。英文はタップすると表示されます。</p>' : ''}
+  <div class="chat ${S.hideEn ? 'hide-en' : ''}" id="chat">
+    ${C.msgs.map((m, i) => m.role === 'assistant' ? `<div class="bubble ai ${C.showEn[i] ? 'revealed' : ''}" data-i="${i}">
+        <p class="en" data-act="cen" data-i="${i}">${h(m.content)}</p>
         ${C.showJa[i] && m.ja ? `<p class="ja">${h(m.ja)}</p>` : ''}
         <div class="b-btns"><button class="mini" data-act="csay" data-i="${i}">${ICON.play}聞く</button>${m.ja ? `<button class="mini" data-act="cja" data-i="${i}">${C.showJa[i] ? '訳を隠す' : '日本語訳'}</button>` : ''}</div>
       </div>` : `<div class="bubble me"><p>${h(m.content)}</p></div>
@@ -1047,6 +1051,7 @@ $app.addEventListener('click', (e) => {
     case 'cmic': chatMic(CHAT_ID); break;
     case 'csay': speak(C.msgs[+el.dataset.i].content); break;
     case 'cfix': speak(C.msgs[+el.dataset.i].correction); break;
+    case 'cen': if (S.hideEn && !C.showEn[+el.dataset.i]) { C.showEn[+el.dataset.i] = true; el.closest('.bubble')?.classList.add('revealed'); } break;
     case 'cja': C.showJa[+el.dataset.i] = !C.showJa[+el.dataset.i]; renderChat(CHAT_ID); break;
     case 'csugg': { const s = C.sugg[+el.dataset.k]; C.draft = s.en; renderChat(CHAT_ID); speak(s.en); document.getElementById('cin')?.focus(); break; }
     case 'creset': stopRec(true); delete CHATS[CHAT_ID]; renderChat(CHAT_ID); break;
@@ -1059,6 +1064,11 @@ $app.addEventListener('click', (e) => {
   }
 });
 $app.addEventListener('change', (e) => {
+  if (e.target.dataset.act === 'hideen') {
+    S.hideEn = e.target.checked; save();
+    if (CHAT_ID) { chatOf(CHAT_ID).showEn = {}; renderChat(CHAT_ID); }
+    return;
+  }
   if (e.target.dataset.act !== 'hideja') return;
   S.hideJa = e.target.checked; save();
   const list = $app.querySelector('.phrases');
@@ -1084,7 +1094,7 @@ function updateOnline() {
 window.addEventListener('online', updateOnline);
 window.addEventListener('offline', updateOnline);
 updateOnline();
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   // 新しい版が届いたら自動で1回だけ読み込み直す
   const hadController = !!navigator.serviceWorker.controller;
