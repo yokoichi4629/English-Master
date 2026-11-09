@@ -1,9 +1,18 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "english-master",
+  "main": "src/index.js",
   "compatibility_date": "2026-11-01",
-  // 第1段階は静的ファイルだけで動く(静的ファイルへのリクエストは無料・無制限)
+  // 画面などの静的ファイル(リクエストは無料・無制限)
   "assets": {
-    "directory": "./public"
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  // AI発音チェック・AI英会話に使う Workers AI(1日10,000 Neuronsまで無料)
+  "ai": {
+    "binding": "AI"
+  },
+  "observability": {
+    "enabled": true
   }
 }
