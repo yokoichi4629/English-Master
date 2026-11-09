@@ -787,7 +787,7 @@ function renderChat(id) {
   <div class="toolbar chat-tools">
     <label class="switch"><input type="checkbox" data-act="hideen" ${S.hideEn ? 'checked' : ''}><span>AIの英文を隠す(聞き取り練習)</span></label>
   </div>
-  ${S.hideEn ? '<p class="hint">音声だけで聞き取ってみよう。英文はタップすると表示されます。</p>' : ''}
+  ${S.hideEn ? '<p class="hint">音声だけで聞き取ってみよう。英文はタップすると表示されます。返事の例も隠しています。</p>' : ''}
   <div class="chat ${S.hideEn ? 'hide-en' : ''}" id="chat">
     ${C.msgs.map((m, i) => m.role === 'assistant' ? `<div class="bubble ai ${C.showEn[i] ? 'revealed' : ''}" data-i="${i}">
         <p class="en" data-act="cen" data-i="${i}">${h(m.content)}</p>
@@ -801,7 +801,8 @@ function renderChat(id) {
     ${ended ? `<div class="chat-end card"><p class="msg">🎉 おつかれさまでした！</p><p class="hint">${MAX_USER_TURNS}回やりとりしました。別の場面にも挑戦してみよう。</p>
       <div class="row-btns"><button class="btn primary block" data-act="creset">もう一度この場面で話す</button><a class="btn ghost block" href="#/ai">場面を選ぶ</a></div></div>` : ''}
   </div>
-  ${!ended && C.sugg.length && !C.loading ? `<div class="sugg"><p class="label">こう言ってみよう(タップで入力)</p>
+  ${!ended && C.sugg.length && !C.loading && S.hideEn && !C.showSugg ? `<div class="sugg"><button class="btn ghost small" data-act="cshowsugg">💡 返事の例を見る</button></div>` : ''}
+  ${!ended && C.sugg.length && !C.loading && (!S.hideEn || C.showSugg) ? `<div class="sugg"><p class="label">こう言ってみよう(タップで入力)</p>
     ${C.sugg.map((x, k) => `<button class="sugg-item" data-act="csugg" data-k="${k}"><span class="en">${h(x.en)}</span>${x.ja ? `<small>${h(x.ja)}</small>` : ''}</button>`).join('')}</div>` : ''}
   ${ended ? '' : `<div class="composer">
     <button class="icon-btn mic-btn ${rec ? 'on' : ''}" data-act="cmic" aria-label="${rec ? '録音を止める' : '声で入力'}" ${C.transcribing ? 'disabled' : ''}>${rec ? ICON.stop : ICON.mic}</button>
@@ -825,7 +826,7 @@ async function sendChat(id, opening = false) {
     C.draft = '';
     const d = dayRec(); d.chat = (d.chat || 0) + 1; addTime(20000); save();
   }
-  C.loading = true; C.err = ''; C.sugg = [];
+  C.loading = true; C.err = ''; C.sugg = []; C.showSugg = false;
   refreshChat(id);
   try {
     const out = await api('/api/chat', { scenario: id, level: S.level, messages: C.msgs.map((m) => ({ role: m.role, content: m.content })) });
@@ -1052,6 +1053,7 @@ $app.addEventListener('click', (e) => {
     case 'csay': speak(C.msgs[+el.dataset.i].content); break;
     case 'cfix': speak(C.msgs[+el.dataset.i].correction); break;
     case 'cen': if (S.hideEn && !C.showEn[+el.dataset.i]) { C.showEn[+el.dataset.i] = true; el.closest('.bubble')?.classList.add('revealed'); } break;
+    case 'cshowsugg': C.showSugg = true; renderChat(CHAT_ID); break;
     case 'cja': C.showJa[+el.dataset.i] = !C.showJa[+el.dataset.i]; renderChat(CHAT_ID); break;
     case 'csugg': { const s = C.sugg[+el.dataset.k]; C.draft = s.en; renderChat(CHAT_ID); speak(s.en); document.getElementById('cin')?.focus(); break; }
     case 'creset': stopRec(true); delete CHATS[CHAT_ID]; renderChat(CHAT_ID); break;
@@ -1066,7 +1068,7 @@ $app.addEventListener('click', (e) => {
 $app.addEventListener('change', (e) => {
   if (e.target.dataset.act === 'hideen') {
     S.hideEn = e.target.checked; save();
-    if (CHAT_ID) { chatOf(CHAT_ID).showEn = {}; renderChat(CHAT_ID); }
+    if (CHAT_ID) { const c = chatOf(CHAT_ID); c.showEn = {}; c.showSugg = false; renderChat(CHAT_ID); }
     return;
   }
   if (e.target.dataset.act !== 'hideja') return;
@@ -1094,7 +1096,7 @@ function updateOnline() {
 window.addEventListener('online', updateOnline);
 window.addEventListener('offline', updateOnline);
 updateOnline();
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   // 新しい版が届いたら自動で1回だけ読み込み直す
   const hadController = !!navigator.serviceWorker.controller;
