@@ -943,7 +943,8 @@ function renderRecord() {
   <h2 class="section">苦手な問題</h2>
   ${weak.length ? `<a class="btn primary block" href="#/q/weak">苦手な問題をまとめて練習(${weak.length}問)</a>
   <ul class="phrases weak-list">${weak.slice(0, 30).map((it) => phraseCard(it).replace('<p class="en">', `<span class="due-tag">復習:${stageLabel(S.items[it.id])}</span><p class="en">`)).join('')}</ul>`
-    : '<p class="hint">まだありません。クイズでまちがえた問題がここに集まります。</p>'}`;
+    : '<p class="hint">まだありません。クイズでまちがえた問題がここに集まります。</p>'}
+  <p class="version">English Master バージョン ${APP_VERSION}</p>`;
 }
 
 /* ---------- ルーティング ---------- */
@@ -1083,8 +1084,19 @@ function updateOnline() {
 window.addEventListener('online', updateOnline);
 window.addEventListener('offline', updateOnline);
 updateOnline();
+const APP_VERSION = '3.2';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  // 新しい版が届いたら自動で1回だけ読み込み直す
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((reg) => {
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+    }).catch(() => {});
+  });
 }
 
 window.addEventListener('hashchange', route);
