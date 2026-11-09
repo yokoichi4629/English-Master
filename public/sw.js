@@ -1,7 +1,7 @@
 // English Master — オフライン学習用のサービスワーカー
 // 通信できるときは常に最新版を取得して表示し(同時に端末へ保存)、
 // 電波がないときや通信が遅いときは保存済みのものを表示する。
-const CACHE = 'english-master-v7';
+const CACHE = 'english-master-v8';
 const SHELL = ['/', '/style.css', '/app.js', '/data.js', '/manifest.webmanifest', '/icon.svg', '/icon-180.png', '/icon-192.png'];
 
 self.addEventListener('install', (e) => {

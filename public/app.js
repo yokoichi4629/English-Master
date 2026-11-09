@@ -1096,7 +1096,7 @@ function updateOnline() {
 window.addEventListener('online', updateOnline);
 window.addEventListener('offline', updateOnline);
 updateOnline();
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.5';
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   // 新しい版が届いたら自動で1回だけ読み込み直す
   const hadController = !!navigator.serviceWorker.controller;

@@ -140,7 +140,18 @@ export function parseReply(raw) {
       };
     } catch { /* fall through */ }
   }
-  return { reply: text.replace(/[{}"]/g, '').slice(0, 400), reply_ja: '', correction: '', correction_ja: '', suggestions: [] };
+  // 途中で切れた返事などから、取り出せる文だけを拾う
+  const pick = (k) => {
+    const m = text.match(new RegExp(`"${k}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
+    if (!m) return '';
+    try { return JSON.parse(`"${m[1]}"`).trim(); } catch { return m[1].trim(); }
+  };
+  if (/"reply"\s*:/.test(text) || s >= 0) {
+    return { reply: pick('reply'), reply_ja: pick('reply_ja'), correction: pick('correction'), correction_ja: pick('correction_ja'), suggestions: [] };
+  }
+  // JSON の形でない普通の文で返ってきたとき
+  const plain = text.replace(/```[a-z]*|```/gi, '').trim();
+  return { reply: /[A-Za-z]/.test(plain) ? plain.slice(0, 400) : '', reply_ja: '', correction: '', correction_ja: '', suggestions: [] };
 }
 
 export async function chat(req, env) {
@@ -159,12 +170,19 @@ export async function chat(req, env) {
   if (!messages.length || messages[0].role !== 'user') {
     messages.unshift({ role: 'user', content: '(The learner has just arrived. Please greet them and start the conversation in character.)' });
   }
-  const res = await env.AI.run(CHAT_MODEL, {
+  const ask = () => env.AI.run(CHAT_MODEL, {
     messages: [{ role: 'system', content: buildSystemPrompt(scenario, level) }, ...messages],
-    max_tokens: 500,
+    max_tokens: 800,
     temperature: 0.6,
+    // 「考える」部分で文字数を使い切って返事が途中で切れるのを防ぐ
+    chat_template_kwargs: { enable_thinking: false },
   });
-  const out = parseReply(extractText(res));
+  let out = parseReply(extractText(await ask()));
+  // うまく読み取れなかったときは1回だけ聞き直す
+  if (!out.reply || !out.suggestions.length) {
+    const again = parseReply(extractText(await ask()));
+    if (again.reply && (again.suggestions.length || !out.reply)) out = again;
+  }
   if (!out.reply) return json({ error: 'empty' }, 502);
   return json(out);
 }
